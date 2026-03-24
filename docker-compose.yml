@@ -1,0 +1,11 @@
+  version: "3.8"
+
+  services:
+    ai-assistant:
+      build: .
+      container_name: ai-assistant
+      ports:
+        - "8000:8000"
+      environment:
+        - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      restart: unless-stopped
