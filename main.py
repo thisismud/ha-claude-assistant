@@ -1,8 +1,8 @@
-  from fastapi import FastAPI
-  import os
+from fastapi import FastAPI
+import os
 
-  app = FastAPI()
+app = FastAPI()
 
-  @app.get("/")
-  def root():
-      return {"status": "AI assistant running"}
+@app.get("/")
+def root():
+    return {"status": "AI assistant running"}
