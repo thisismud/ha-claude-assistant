@@ -8,4 +8,8 @@ services:
       - "8888:8000"
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - HOME_HA_URL=${HOME_HA_URL}
+      - HOME_HA_TOKEN=${HOME_HA_TOKEN}
+      - FARM_HA_URL=${FARM_HA_URL}
+      - FARM_HA_TOKEN=${FARM_HA_TOKEN}
     restart: unless-stopped
