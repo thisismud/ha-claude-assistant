@@ -6,6 +6,7 @@ import requests
 import os
 import json
 import uuid
+import time
 
 app = FastAPI()
 
@@ -23,6 +24,57 @@ HA_SYSTEMS = {
 }
 
 sessions = {}
+
+CONTEXT_TTL = 1800  # seconds — refresh HA context every 30 minutes
+context_cache = {
+    "home": {"summary": None, "timestamp": 0},
+    "farm": {"summary": None, "timestamp": 0}
+}
+
+
+def build_system_context(system: str) -> str:
+    cache = context_cache.get(system)
+    if cache and cache["summary"] and (time.time() - cache["timestamp"]) < CONTEXT_TTL:
+        return cache["summary"]
+
+    states = ha_request(system, "GET", "states")
+    if isinstance(states, dict) and "error" in states:
+        return f"[{system.capitalize()} system unavailable: {states['error']}]"
+
+    domains: dict = {}
+    for state in states:
+        domain = state["entity_id"].split(".")[0]
+        domains.setdefault(domain, []).append(state["entity_id"])
+
+    lines = [f"### {system.capitalize()} System"]
+    for domain, entity_ids in sorted(domains.items()):
+        lines.append(f"\n**{domain}** ({len(entity_ids)})")
+        for eid in entity_ids:
+            lines.append(f"  - {eid}")
+
+    summary = "\n".join(lines)
+    context_cache[system]["summary"] = summary
+    context_cache[system]["timestamp"] = time.time()
+    return summary
+
+
+def get_system_prompt() -> str:
+    home_context = build_system_context("home")
+    farm_context = build_system_context("farm")
+    return f"""You are an expert Home Assistant advisor with access to two systems: 'home' and 'farm'.
+
+Below is a current snapshot of both systems. Use these entity IDs directly for simple requests. \
+Use the available tools when you need live state/attribute data, or to make changes.
+
+{home_context}
+
+{farm_context}
+
+Guidelines:
+- Use entity IDs from the snapshot above when possible — call get_entities only when you need current state or attributes
+- Confirm which system you are working with before making any changes
+- When creating automations, explain what you are creating before doing it
+- Be practical and specific"""
 
 def ha_request(system: str, method: str, endpoint: str, data: dict = None):
     config = HA_SYSTEMS.get(system)
@@ -126,15 +178,6 @@ def process_tool_call(tool_name: str, tool_input: dict):
         return ha_request(system, "POST", "config/automation/config", automation)
     return {"error": f"Unknown tool: {tool_name}"}
 
-SYSTEM_PROMPT = """You are an expert Home Assistant advisor with access to two systems: 'home' and 'farm'.
-
-You can query entities, services, and automations, and you can make changes including calling services and creating automations.
-
-Guidelines:
-- Always fetch current entity data before making changes or giving advice so you use correct entity IDs
-- Confirm which system you're working with before making any changes
-- When creating automations, explain what you're creating before doing it
-- Be practical and specific — use real entity IDs from the user's system"""
 
 HTML = """<!DOCTYPE html>
 <html lang="en">
@@ -232,7 +275,7 @@ def chat(prompt: Prompt):
         response = client.messages.create(
             model="claude-sonnet-4-6",
             max_tokens=4096,
-            system=SYSTEM_PROMPT,
+            system=get_system_prompt(),
             tools=tools,
             messages=messages
         )
